@@ -2,3 +2,4 @@
 .idea/
 *.py[cd]
 *.err.log
+tf_work_dir/*.log

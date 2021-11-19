@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import time
 from math import inf
 import multiprocessing
@@ -30,34 +31,38 @@ def generate_schema(queue: multiprocessing.Queue):
     tier: str
     while not queue.empty():
         full_name, version, tier = queue.get()
-        file_name = full_name.replace("/", "-")
+        file_name = full_name.replace("/", "_")
         # create temp dir
         cwd = os.getcwd()
         tf_dir = tempfile.mkdtemp(dir=os.path.join(cwd, 'tf_work_dir'))
-        # write config
-        with open(os.path.join(tf_dir, "main.tf"), 'w') as f:
-            f.write(create_tf_config(full_name, version))
-        # tf init
-        t = Terraform(working_dir=tf_dir)
-        ret_code, _, err = t.init(no_color=IsFlagged)
-        if ret_code != 0:
-            with open(os.path.join(cwd, "schemas", tier, file_name + ".err.log"), 'w') as f:
-                f.write(err)
-                continue
-        # tf providers schema -json
-        ret_code, out, err = t.cmd('providers schema', json=IsFlagged, no_color=IsFlagged)
-        # write the schemas dir
-        if ret_code == 0:
-            with open(os.path.join(cwd, "schemas", tier, file_name+".json"), 'w') as f:
-                f.write(out)
-        else:
-            with open(os.path.join(cwd, "schemas", tier, file_name + ".err.log"), 'w') as f:
-                f.write(err)
-        # rm temp dir
         try:
-            shutil.rmtree(tf_dir)
-        except OSError as e:
-            print(f"Error: {tf_dir} - {e.strerror}")
+            # write config
+            with open(os.path.join(tf_dir, "main.tf"), 'w') as f:
+                f.write(create_tf_config(full_name, version))
+            # tf init
+            t = Terraform(working_dir=tf_dir)
+            ret_code, _, err = t.init(no_color=IsFlagged)
+            if ret_code != 0:
+                with open(os.path.join(cwd, "schemas", tier, file_name + ".err.log"), 'w') as f:
+                    f.write(err)
+                    continue
+            # tf providers schema -json
+            ret_code, out, err = t.cmd('providers schema', json=IsFlagged, no_color=IsFlagged)
+            # write the schemas dir
+            if ret_code == 0:
+                with open(os.path.join(cwd, "schemas", tier, file_name+".json"), 'w') as f:
+                    f.write(out)
+            else:
+                with open(os.path.join(cwd, "schemas", tier, file_name + ".err.log"), 'w') as f:
+                    f.write(err)
+        except:
+            pass
+        finally:
+            # rm temp dir
+            try:
+                shutil.rmtree(tf_dir)
+            except OSError as e:
+                print(f"Error: {tf_dir} - {e.strerror}")
         print(queue.qsize())
 
 
@@ -98,15 +103,50 @@ def get_registry_page(tier_page):
     return ret_list
 
 
-def main():
-    pqueue = multiprocessing.Queue()
-    for t in ['official', 'partner', 'community']:
-        get_provider_tier(t, pqueue)
-    for _ in range(multiprocessing.cpu_count()):
-        multiprocessing.Process(target=generate_schema, args=(pqueue,)).start()
-    while not pqueue.empty():
-        time.sleep(1)
+def build_manifests():
+    # manifest official
+    schemas = os.listdir(os.path.join(os.getcwd(), 'schemas', 'official'))
+    manifest = []
+    for schema in schemas:
+        if schema.endswith('.err.log'):
+            continue
+        manifest.append(schema[:-5].replace("_", "/")+"\n")
+    with open(os.path.join(os.getcwd(), 'schemas', 'manifest.official.txt'), 'w') as f:
+        f.writelines(manifest)
+
+    # manifest partner
+    schemas = os.listdir(os.path.join(os.getcwd(), 'schemas', 'partner'))
+    manifest = []
+    for schema in schemas:
+        if schema.endswith('.err.log'):
+            continue
+        manifest.append(schema[:-5].replace("_", "/") + "\n")
+    with open(os.path.join(os.getcwd(), 'schemas', 'manifest.partner.txt'), 'w') as f:
+        f.writelines(manifest)
+
+    # manifest community
+    schemas = os.listdir(os.path.join(os.getcwd(), 'schemas', 'community'))
+    manifest = []
+    for schema in schemas:
+        if schema.endswith('.err.log'):
+            continue
+        manifest.append(schema[:-5].replace("_", "/") + "\n")
+    with open(os.path.join(os.getcwd(), 'schemas', 'manifest.community.txt'), 'w') as f:
+        f.writelines(manifest)
+
+
+def main(manifest_only=False):
+    if not manifest_only:
+        pqueue = multiprocessing.Queue()
+        for t in ['official', 'partner', 'community']:
+            get_provider_tier(t, pqueue)
+        for _ in range(multiprocessing.cpu_count()):
+            multiprocessing.Process(target=generate_schema, args=(pqueue,)).start()
+        while not pqueue.empty():
+            time.sleep(1)
+    build_manifests()
 
 
 if __name__ == '__main__':
-    main()
+    manifest = True if len(sys.argv) > 1 and sys.argv[1] == "--manifest-only" else False
+    main(manifest)
