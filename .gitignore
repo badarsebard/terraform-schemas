@@ -1,0 +1,4 @@
+.venv/
+.idea/
+*.py[cd]
+*.err.log

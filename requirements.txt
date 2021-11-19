@@ -1,0 +1,2 @@
+requests==2.26.0
+python-terraform==0.10.1
