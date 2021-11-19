@@ -1,0 +1,2 @@
+# terraform-schemas
+This is a simple tool that attempts to generate the schema json produced by `terraform providers schema -json` for every provider in the official [registry.terraform.io](https://registry.terraform.io). Many plugins aren't updated or functional with modern versions of terraform. If there is an error generating a schema for a provider the script will output an error log. 
